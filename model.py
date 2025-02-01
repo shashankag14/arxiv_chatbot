@@ -4,6 +4,7 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.schema import Document
 from langchain.llms import HuggingFaceHub
+import feedparser
 import os
 import faiss
 import json
@@ -11,8 +12,6 @@ import streamlit as st
 
 
 os.environ["HUGGINGFACEHUB_API_TOKEN"] = "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"
-
-DATA_PATH = "./data/arxiv_papers.json"
 
 
 def load_json(file_path):
@@ -61,18 +60,33 @@ def create_qa_chain(vector_db):
     return qa
 
 
-data = load_json(DATA_PATH)
-docs = create_documents(data)
-vector_db = create_vector_db(docs)
-qa = create_qa_chain(vector_db)
+if __name__ == "__main__":
+    USE_PRELOADED_DATA = False
 
-st.title("Arxiv Papers Q&A")
-# User input for query
-query = st.text_input("Ask a question about Arxiv papers:")
+    # Use preloaded arxiv data in JSON format for RAG
+    if USE_PRELOADED_DATA:
+        DATA_PATH = "./data/arxiv_papers.json"
+        data = load_json(DATA_PATH)
+    # Use direct API URL to parse the data from arxiv using keyword based search
+    else:
+        KEYWORD = "RAG"
+        # ArXiv API URL
+        url = f'http://export.arxiv.org/api/query?search_query=abs:{KEYWORD}&start=0&max_results=1000&sortBy=lastUpdatedDate&sortOrder=descending'
+        # Parse the API response
+        feed = feedparser.parse(url)
+        data = feed.entries
 
-# Show the answer when the user submits a question
-if query:
-    with st.spinner("Thinking..."):
-        response = qa.invoke(query)
-        st.write("Answer:")
-        st.write(response)
+    docs = create_documents(data)
+    vector_db = create_vector_db(docs)
+    qa = create_qa_chain(vector_db)
+
+    # User input for query
+    query = st.text_input(
+        "Ask a question about papers related to RAG:")
+
+    # Show the answer when the user submits a question
+    if query:
+        with st.spinner("Thinking..."):
+            response = qa.invoke(query)
+            st.write("Answer:")
+            st.write(response)
