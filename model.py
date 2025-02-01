@@ -4,14 +4,22 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
 from langchain.schema import Document
 from langchain.llms import HuggingFaceHub
+from dotenv import load_dotenv
 import feedparser
-import os
 import faiss
 import json
+import os
 import streamlit as st
 
 
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = "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"
+# Load environment variables from the .env file
+load_dotenv()
+
+# Access your API key from the environment
+api_key = os.getenv('HUGGINGFACE_API_KEY')
+
+# Set the API key in the environment
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = api_key
 
 
 def load_json(file_path):
