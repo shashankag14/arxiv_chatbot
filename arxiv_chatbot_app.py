@@ -41,21 +41,23 @@ else:
         st.rerun()
 
     st.write("### Keywords Entered:")
-    cols = st.columns(len(st.session_state["keywords"]) + 1)
-
-    for i, kw in enumerate(st.session_state["keywords"]):
-        with cols[i]:
-            if st.button(f"❌ {kw}", key=f"remove_{kw}"):
-                st.session_state["keywords"].remove(kw)
-                st.rerun()   # Refresh page to reflect changes
-
-    cols = st.columns(len(st.session_state["keywords"]) + 1)
+    for kw in st.session_state.keywords:
+        # Create two columns: one for the keyword, one for the close button
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown(f"- {kw}")  # Display the keyword
+        with col2:
+            if st.button("x", key=f"remove_{kw}"):  # Button with a cross icon
+                # Remove keyword from the list
+                st.session_state.keywords.remove(kw)
+                st.rerun()  # Re-run the app to reflect changes
 
     if st.sidebar.button("Fetch Papers"):
-        keywords = st.session_state["keywords"]
+        keywords = st.session_state.keywords
 
         if not keywords:
             st.warning("Please enter at least one keyword!")
+            st.rerun()
 
         quoted_keywords = [quote(kw) for kw in keywords]
 
@@ -67,7 +69,8 @@ else:
 
         arxiv_instance = ArxivModel(st.session_state.cohere_api_key)
         st.session_state.qa_chain = arxiv_instance.get_model(feed.entries)
-        st.success(f"Fetched {len(feed.entries)} papers related to '{keyword}'!")
+        st.success(
+            f"Fetched {len(feed.entries)} papers related to '{keywords}'!")
     else:
         st.warning("Please enter a keyword before fetching papers.")
 
