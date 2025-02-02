@@ -32,7 +32,7 @@ else:
 
     if st.sidebar.button("Fetch Papers") and keyword:
         encoded_keyword = quote(keyword)
-        url = f'http://export.arxiv.org/api/query?search_query=abs:{encoded_keyword}&start=0&max_results=5&sortBy=lastUpdatedDate&sortOrder=descending'
+        url = f'http://export.arxiv.org/api/query?search_query=abs:{encoded_keyword}&start=0&max_results=100&sortBy=lastUpdatedDate&sortOrder=descending'
         feed = feedparser.parse(url)
 
         arxiv_instance = ArxivModel(st.session_state.cohere_api_key)

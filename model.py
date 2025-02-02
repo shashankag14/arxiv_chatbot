@@ -1,9 +1,8 @@
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain.schema import Document
-from langchain import hub
-from langchain_cohere import ChatCohere
-from langchain_cohere import CohereEmbeddings
+from langchain_core.prompts import PromptTemplate
+from langchain_cohere import ChatCohere, CohereEmbeddings
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
@@ -69,11 +68,8 @@ class ArxivModel:
     def get_llm(self):
         return ChatCohere(model="command-r-plus-08-2024",
                           max_tokens=256,
-                          temperature=0.75
+                          temperature=0.25
                           )
-
-    def get_prompt(self):
-        return hub.pull("rlm/rag-prompt")
 
     def create_vector_db(self, docs):
         # Load a pre-trained embedding model
@@ -92,8 +88,21 @@ class ArxivModel:
 
         return vector_db
 
-    def create_qa_chain(self, vector_db, llm, prompt):
+    def create_qa_chain(self, vector_db, llm):
         retriever = vector_db.as_retriever()
+
+        prompt_template = """You are an AI assistant that answers questions strictly based on the provided research papers.
+        Below are relevant excerpts from the papers:
+
+        {context}
+
+        Based on the above information, answer the following question:
+        {question}
+
+        If you do not find relevant information in the given papers, respond with 'I do not know' and do not make up an answer.
+        """
+        prompt = PromptTemplate(template=prompt_template, input_variables=[
+                                "context", "question"])
 
         qa_chain = (
             {"context": retriever, "question": RunnablePassthrough()}
@@ -108,8 +117,7 @@ class ArxivModel:
         docs = self.create_documents(data)
         vector_db = self.create_vector_db(docs)
         llm = self.get_llm()
-        prompt = self.get_prompt()
-        qa_chain = self.create_qa_chain(vector_db, llm, prompt)
+        qa_chain = self.create_qa_chain(vector_db, llm)
         return qa_chain
 
 
