@@ -1,9 +1,11 @@
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
 from langchain.schema import Document
-from langchain.llms import HuggingFaceHub
+from langchain import hub
+from langchain_cohere import ChatCohere
+from langchain_cohere import CohereEmbeddings
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 import feedparser
 import faiss
@@ -12,14 +14,30 @@ import os
 import streamlit as st
 
 
-# Load environment variables from the .env file
-load_dotenv()
+def set_api_keys():
+    # Load environment variables from the .env file
+    load_dotenv()
 
-# Access your API key from the environment
-api_key = os.getenv('HUGGINGFACE_API_KEY')
+    # Check if the API keys are present
+    if not os.getenv('HUGGINGFACE_API_KEY'):
+        raise ValueError(
+            "Error: HUGGINGFACE_API_KEY is not set. Please add it to your .env file.")
+    else:
+        os.environ["HUGGINGFACEHUB_API_TOKEN"] = os.getenv('HUGGINGFACE_API_KEY')
 
-# Set the API key in the environment
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = api_key
+    if not os.getenv('OPENAI_API_KEY'):
+        raise ValueError(
+            "Error: OPENAI_API_KEY is not set. Please add it to your .env file.")
+    else:
+        os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
+
+    if not os.getenv('COHERE_API_KEY'):
+        raise ValueError(
+            "Error: OPENAI_API_KEY is not set. Please add it to your .env file.")
+    else:
+        os.environ["COHERE_API_KEY"] = os.getenv('COHERE_API_KEY')
+
+    print("API keys loaded successfully!")
 
 
 def load_json(file_path):
@@ -43,9 +61,17 @@ def create_documents(data):
     return docs
 
 
+def get_llm():
+    return ChatCohere(model="command-r-plus-08-2024", max_tokens=256, temperature=0.75)
+
+
+def get_prompt():
+    return hub.pull("rlm/rag-prompt")
+
+
 def create_vector_db(docs):
     # Load a pre-trained embedding model
-    embedding_model = HuggingFaceEmbeddings(model_name='all-MiniLM-L6-v2')
+    embedding_model = CohereEmbeddings(model="embed-english-light-v3.0")
 
     index = faiss.IndexFlatL2(len(embedding_model.embed_query("Hello LLM")))
 
@@ -61,15 +87,31 @@ def create_vector_db(docs):
     return vector_db
 
 
-def create_qa_chain(vector_db):
+def create_qa_chain(vector_db, llm, prompt):
     retriever = vector_db.as_retriever()
-    llm = HuggingFaceHub(repo_id="tiiuae/falcon-7b-instruct")
-    qa = RetrievalQA.from_chain_type(llm=llm, retriever=retriever)
-    return qa
+
+    qa_chain = (
+        {"context": retriever, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+        )
+
+    return qa_chain
+
+
+def get_model(data):
+    docs = create_documents(data)
+    vector_db = create_vector_db(docs)
+    llm = get_llm()
+    prompt = get_prompt()
+    qa_chain = create_qa_chain(vector_db, llm, prompt)
+    return qa_chain
 
 
 if __name__ == "__main__":
     USE_PRELOADED_DATA = False
+    USE_STREAMLIT = False
 
     # Use preloaded arxiv data in JSON format for RAG
     if USE_PRELOADED_DATA:
@@ -79,22 +121,26 @@ if __name__ == "__main__":
     else:
         KEYWORD = "RAG"
         # ArXiv API URL
-        url = f'http://export.arxiv.org/api/query?search_query=abs:{KEYWORD}&start=0&max_results=1000&sortBy=lastUpdatedDate&sortOrder=descending'
+        url = f'http://export.arxiv.org/api/query?search_query=abs:{KEYWORD}&start=0&max_results=10&sortBy=lastUpdatedDate&sortOrder=descending'
         # Parse the API response
         feed = feedparser.parse(url)
         data = feed.entries
 
-    docs = create_documents(data)
-    vector_db = create_vector_db(docs)
-    qa = create_qa_chain(vector_db)
+    set_api_keys()
 
-    # User input for query
-    query = st.text_input(
-        "Ask a question about papers related to RAG:")
+    qa_chain = get_model(data)
 
-    # Show the answer when the user submits a question
-    if query:
-        with st.spinner("Thinking..."):
-            response = qa.invoke(query)
-            st.write("Answer:")
-            st.write(response)
+    for chunk in qa_chain.stream("What is LLM?"):
+        print(chunk, end="", flush=True)
+
+    if USE_STREAMLIT:
+        # User input for query
+        query = st.text_input(
+            "Ask a question about papers related to RAG:")
+
+        # Show the answer when the user submits a question
+        if query:
+            with st.spinner("Thinking..."):
+                response = qa_chain.invoke(query)
+                st.write("Answer:")
+                st.write(response)
