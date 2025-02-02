@@ -27,12 +27,42 @@ else:
     if "qa_chain" not in st.session_state:
         st.session_state.qa_chain = None
 
-    st.sidebar.header("🔍 ArXiv Paper Search")
-    keyword = st.sidebar.text_input("Enter a keyword to fetch papers:")
+    if "keywords" not in st.session_state:
+        st.session_state.keywords = []
 
-    if st.sidebar.button("Fetch Papers") and keyword:
-        encoded_keyword = quote(keyword)
-        url = f'http://export.arxiv.org/api/query?search_query=abs:{encoded_keyword}&start=0&max_results=100&sortBy=lastUpdatedDate&sortOrder=descending'
+    st.sidebar.header("🔍 ArXiv Paper Search")
+    new_keyword = st.sidebar.text_input(
+        "Enter a keyword to fetch papers:")
+    if new_keyword and new_keyword not in st.session_state.keywords:
+        st.session_state.keywords.append(new_keyword)
+        # # Reset the field after submission
+        # st.sidebar.text_input(
+        #     "Enter a keyword to fetch papers:", value="", key="new_keyword")
+        st.rerun()
+
+    st.write("### Keywords Entered:")
+    cols = st.columns(len(st.session_state["keywords"]) + 1)
+
+    for i, kw in enumerate(st.session_state["keywords"]):
+        with cols[i]:
+            if st.button(f"❌ {kw}", key=f"remove_{kw}"):
+                st.session_state["keywords"].remove(kw)
+                st.rerun()   # Refresh page to reflect changes
+
+    cols = st.columns(len(st.session_state["keywords"]) + 1)
+
+    if st.sidebar.button("Fetch Papers"):
+        keywords = st.session_state["keywords"]
+
+        if not keywords:
+            st.warning("Please enter at least one keyword!")
+
+        quoted_keywords = [quote(kw) for kw in keywords]
+
+        # Construct ArXiv query using AND condition
+        query = "+AND+".join([f"abs:{quote(keyword)}" for keyword in quoted_keywords])
+        url = f'http://export.arxiv.org/api/query?search_query={query}&start=0&max_results=10&sortBy=lastUpdatedDate&sortOrder=descending'
+        print(url)
         feed = feedparser.parse(url)
 
         arxiv_instance = ArxivModel(st.session_state.cohere_api_key)
