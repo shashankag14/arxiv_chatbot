@@ -9,6 +9,8 @@ ArXiv Chatbot is a simple web application, designed to interact with research pa
 - **Ask Questions**: Users can ask questions related to the research papers, and the app will provide answers using a trained model.
 - **Interactive UI**: A simple user interface built with Streamlit.
 
+> **⚠️ Note:** The app uses Cohere for LLM based responses. Without a valid Cohere API key, the bot will not work. You can get your API key from [Cohere's API Key Page](https://dashboard.cohere.com/api-keys).
+
 ## Installation
 
 Follow these steps to get your project set up locally.
@@ -22,7 +24,7 @@ Follow these steps to get your project set up locally.
 
 ##### Add API Key
 
-Make sure to securely store your API key (e.g., Hugging Face or others if you wish to change the embedding or LLM model) in a `.env` file to avoid exposing sensitive information:
+In order to test the app locally without using the streamlit app, make sure to securely store your Cohere API key (or others if you wish to change the embedding or LLM model) in a `.env` file to avoid exposing sensitive information:
 
 1. Create a `.env` file in the project directory.
 2. Add your API keys in this file:
@@ -35,15 +37,15 @@ Make sure to securely store your API key (e.g., Hugging Face or others if you wi
 To run the app locally, execute the following command from the root directory of the project:
 
 ```bash
-streamlit run arxiv_chatbot_app.py
+streamlit run ./arxiv_chatbot_app.py
 ```
 
 This will launch the Streamlit web interface in your browser.
 
 ## How it works?
 
-1. **Search**: The user inputs a keyword in the sidebar.
-2. **Fetch Papers**: The app queries the ArXiv API and fetches research papers related to the keyword.
+1. **Search**: The user inputs multiple keywords in the sidebar.
+2. **Fetch Papers**: The app queries the ArXiv API and fetches research papers related to the entered keywords.
 3. **Q&A**: After fetching the papers, users can enter a question. The app will process the query and provide an answer based on the fetched papers.
 
 ## Frameworks Used
