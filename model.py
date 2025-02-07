@@ -68,7 +68,7 @@ class ArxivModel:
     def get_llm(self):
         return ChatCohere(model="command-r-plus-08-2024",
                           max_tokens=256,
-                          temperature=0.25
+                          temperature=0.5
                           )
 
     def create_vector_db(self, docs):
@@ -99,7 +99,10 @@ class ArxivModel:
         Based on the above information, answer the following question:
         {question}
 
-        If you do not find relevant information in the given papers, respond with 'I do not know' and do not make up an answer.
+        Note:
+        - There could be cases when its not a question but just a statement. In such cases, do not use knowledge from the papers. Just reply back with what you have learned before (e.g. 'You're welcome' if the input is 'Thanks').
+        - If you feel its a question and you do not find relevant information in the given papers, respond with 'Sorry, I do not have much information related to this. But this could be something close to what you are looking for...' and then respond back with the knowledge you have apart from the papers.
+        - Be polite and friendly in your responses.
         """
         prompt = PromptTemplate(template=prompt_template, input_variables=[
                                 "context", "question"])

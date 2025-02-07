@@ -55,7 +55,7 @@ class ArxivChatbot:
         query = "+AND+".join(
             [f"abs:{quote(keyword)}" for keyword in quoted_keywords])
         url = (f'http://export.arxiv.org/api/query?search_query={query}'
-               f'&start=0&max_results=10&sortBy=lastUpdatedDate&sortOrder=descending')
+               f'&start=0&max_results=50&sortBy=lastUpdatedDate&sortOrder=descending')
         print(url)  # debug
         return feedparser.parse(url)
 
