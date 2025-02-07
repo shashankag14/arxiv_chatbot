@@ -56,6 +56,7 @@ class ArxivChatbot:
             [f"abs:{quote(keyword)}" for keyword in quoted_keywords])
         url = (f'http://export.arxiv.org/api/query?search_query={query}'
                f'&start=0&max_results=10&sortBy=lastUpdatedDate&sortOrder=descending')
+        print(url)  # debug
         return feedparser.parse(url)
 
     def prepare_llm(self, keywords, feed):
@@ -109,6 +110,7 @@ class ArxivChatbot:
             with col2:
                 if st.button("Reset", type="secondary"):
                     st.session_state.keywords = []
+                    st.session_state.qa_chain = None
                     st.rerun()
 
         for message in st.session_state.messages:
@@ -117,7 +119,8 @@ class ArxivChatbot:
 
         if prompt := st.chat_input("Ask a question about the papers..."):
             if not st.session_state.qa_chain:
-                st.warning("Fetch papers first by providing a keyword.")
+                st.warning(
+                    "Please provide keywords related to a topic you want to discuss about.")
             else:
                 self.process_chat(prompt)
 
