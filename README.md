@@ -3,9 +3,9 @@
 
 [![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://arxiv-qna.streamlit.app/)
 
-ArXiv Chatbot is a simple web application, designed to interact with research papers using the [ArXiv API](https://info.arxiv.org/help/api/index.html). The app allows users to enter a keyword, fetch related research papers, and ask questions about them. The aim of the app is to use concepts from Retrieval Augmented Generation (RAG) to answer questions about the papers. Following are the main features supported by the app:
+ArXiv Chatbot is a simple web application, designed to interact with research papers using the [ArXiv API](https://info.arxiv.org/help/api/index.html). The app allows users to enter multiple keyword, fetch related research papers, and ask questions about them. The aim of the app is to use concepts from Retrieval Augmented Generation (RAG) to answer questions about the papers. Following are the main features supported by the app:
 
-- **Search Papers**: Users can input a keyword and get a list of research papers from ArXiv.
+- **Search Papers**: Users can input multiple keywords and get a list of research papers from ArXiv.
 - **Ask Questions**: Users can ask questions related to the research papers, and the app will provide answers using a trained model.
 - **Interactive UI**: A simple user interface built with Streamlit.
 
