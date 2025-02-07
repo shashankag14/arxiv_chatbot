@@ -3,6 +3,67 @@ import feedparser
 from model import ArxivModel
 from urllib.parse import quote
 
+
+def add_keyword():
+    new_keyword = st.session_state.new_keyword.strip()
+    # add new keywords
+    if new_keyword and new_keyword not in st.session_state.keywords:
+        st.session_state.keywords.append(new_keyword)
+    st.session_state.new_keyword = ""
+
+
+def remove_keyword(keyword_to_remove):
+    st.session_state.keywords.remove(keyword_to_remove)
+    st.rerun()
+
+
+def display_entered_keywords():
+    for kw in st.session_state.keywords:
+        st.sidebar.write("#### Keyword(s) Entered:")
+        # two columns: one for the keyword, one for the close button
+        col1, col2 = st.sidebar.columns([1, 1])
+        with col1:
+            st.sidebar.markdown(f"- {kw}")  # Display the keyword
+        with col2:
+            # cross icon button
+            if st.sidebar.button("x", key=f"remove_{kw}", type="secondary"):
+                remove_keyword(kw)
+
+
+def initialize_states():
+    # Initialize session state for messages and model
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    if "qa_chain" not in st.session_state:
+        st.session_state.qa_chain = None
+
+    if "keywords" not in st.session_state:
+        st.session_state.keywords = []
+
+
+def process_chat(prompt):
+    # Display user message
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Store user message
+    st.session_state.messages.append(
+        {"role": "user", "content": prompt})
+
+    # Generate response
+    with st.spinner("Thinking..."):
+        response = st.session_state.qa_chain.invoke(prompt)
+
+    # Display assistant message
+    with st.chat_message("assistant"):
+        st.markdown(response)
+
+    # Store assistant message
+    st.session_state.messages.append(
+        {"role": "assistant", "content": response})
+
+
 # Title of the app
 st.title("ArXiv Q&A")
 st.write(
@@ -20,59 +81,50 @@ if not cohere_key:
 else:
     st.session_state.cohere_api_key = cohere_key
 
-    # Initialize session state for messages and model
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    if "qa_chain" not in st.session_state:
-        st.session_state.qa_chain = None
-
-    if "keywords" not in st.session_state:
-        st.session_state.keywords = []
+    initialize_states()
 
     st.sidebar.header("🔍 ArXiv Paper Search")
-    new_keyword = st.sidebar.text_input(
-        "Enter a keyword to fetch papers:")
-    if new_keyword and new_keyword not in st.session_state.keywords:
-        st.session_state.keywords.append(new_keyword)
-        # # Reset the field after submission
-        # st.sidebar.text_input(
-        #     "Enter a keyword to fetch papers:", value="", key="new_keyword")
-        st.rerun()
+    st.sidebar.text_input(
+        "Enter keywords to fetch papers:",
+        key="new_keyword",
+        on_change=add_keyword,
+        placeholder='E.g., visual question answering')
 
-    st.write("### Keywords Entered:")
-    for kw in st.session_state.keywords:
-        # Create two columns: one for the keyword, one for the close button
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.markdown(f"- {kw}")  # Display the keyword
-        with col2:
-            if st.button("x", key=f"remove_{kw}"):  # Button with a cross icon
-                # Remove keyword from the list
-                st.session_state.keywords.remove(kw)
-                st.rerun()  # Re-run the app to reflect changes
+    display_entered_keywords()
 
-    if st.sidebar.button("Fetch Papers"):
-        keywords = st.session_state.keywords
-
-        if not keywords:
-            st.warning("Please enter at least one keyword!")
+    col1, col2 = st.sidebar.columns([1, 1])
+    with col2:
+        if st.sidebar.button("Reset", type="secondary"):
+            st.session_state.keywords = []
             st.rerun()
+    with col1:
+        if st.sidebar.button("Fetch Papers", type="primary"):
+            keywords = st.session_state.keywords
 
-        quoted_keywords = [quote(kw) for kw in keywords]
+            if not keywords:
+                st.warning("Please enter at least one keyword!")
+                st.rerun()
 
-        # Construct ArXiv query using AND condition
-        query = "+AND+".join([f"abs:{quote(keyword)}" for keyword in quoted_keywords])
-        url = f'http://export.arxiv.org/api/query?search_query={query}&start=0&max_results=10&sortBy=lastUpdatedDate&sortOrder=descending'
-        print(url)
-        feed = feedparser.parse(url)
+            # refine the keyword by removing extra spaces etc.
+            quoted_keywords = [quote(kw) for kw in keywords]
 
-        arxiv_instance = ArxivModel(st.session_state.cohere_api_key)
-        st.session_state.qa_chain = arxiv_instance.get_model(feed.entries)
-        st.success(
-            f"Fetched {len(feed.entries)} papers related to '{keywords}'!")
-    else:
-        st.warning("Please enter a keyword before fetching papers.")
+            # Construct ArXiv query using AND condition
+            query = "+AND+".join([f"abs:{quote(keyword)}" for keyword in quoted_keywords])
+            url = f'http://export.arxiv.org/api/query?search_query={query}&start=0&max_results=10&sortBy=lastUpdatedDate&sortOrder=descending'
+            print(url)
+
+            feed = feedparser.parse(url)
+            arxiv_instance = ArxivModel(st.session_state.cohere_api_key)
+            if len(feed.entries):
+                st.session_state.qa_chain = arxiv_instance.get_model(feed.entries)
+                # display the used keywords
+                st.sidebar.write(
+                    f"Fetched {len(feed.entries)} papers related to:\n")
+                for kw in keywords:
+                    st.sidebar.write(f"- {kw}")
+            else:
+                st.sidebar.warning(
+                    "Failed to fetch papers. Please try changing the keywords.")
 
     # Display existing chat messages
     for message in st.session_state.messages:
@@ -84,22 +136,4 @@ else:
         if not st.session_state.qa_chain:
             st.warning("Please provide a keyword to fetch papers first.")
         else:
-            # Display user message
-            with st.chat_message("user"):
-                st.markdown(prompt)
-
-            # Store user message
-            st.session_state.messages.append(
-                {"role": "user", "content": prompt})
-
-            # Generate response
-            with st.spinner("Thinking..."):
-                response = st.session_state.qa_chain.invoke(prompt)
-
-            # Display assistant message
-            with st.chat_message("assistant"):
-                st.markdown(response)
-
-            # Store assistant message
-            st.session_state.messages.append(
-                {"role": "assistant", "content": response})
+            process_chat(prompt)
