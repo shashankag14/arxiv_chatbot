@@ -18,8 +18,9 @@ Follow these steps to get your project set up locally.
   ```bash
   git clone https://github.com/shashankag14/arxiv_chatbot.git
   cd arxiv_chatbot
-  conda env create -f environment.yaml
+  conda create --name arxiv-chatbot-env python=3.9
   conda activate arxiv-chatbot-env
+  pip install -r requirements.txt
   ```
 
 ##### Add API Key
