@@ -1,13 +1,13 @@
 
 # ArXiv Chatbot
 
-[![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://arxiv-qna.streamlit.app/)
-
-ArXiv Chatbot is a simple web application, designed to interact with research papers using the [ArXiv API](https://info.arxiv.org/help/api/index.html). The app allows users to enter multiple keyword, fetch related research papers, and ask questions about them. The aim of the app is to use concepts from Retrieval Augmented Generation (RAG) to answer questions about the papers. Following are the main features supported by the app:
+ArXiv Chatbot is a simple web application, designed to interact with research papers using the [ArXiv API](https://info.arxiv.org/help/api/index.html). The app allows users to enter multiple keyword, fetch related research papers, and ask questions about them. The aim of the app is to use concepts from Retrieval Augmented Generation (RAG) to answer questions about the papers using PyTorch and Streamlit. Following are the main features supported by the app:
 
 - **Search Papers**: Users can input multiple keywords and get a list of research papers from ArXiv.
-- **Ask Questions**: Users can ask questions related to the research papers, and the app will provide answers using a trained model.
+- **Ask Questions**: Users can ask questions related to the multiple research papers retrieved, and the app will provide answers using a trained model.
 - **Interactive UI**: A simple user interface built with Streamlit.
+
+Try it out: [![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://arxiv-qna.streamlit.app/)
 
 > **⚠️ Note:** The app uses Cohere for LLM based responses. Without a valid Cohere API key, the bot will not work. You can get your API key from [Cohere's API Key Page](https://dashboard.cohere.com/api-keys).
 
