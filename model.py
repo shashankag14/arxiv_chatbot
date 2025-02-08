@@ -1,6 +1,7 @@
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain.schema import Document
+from langchain.memory import ConversationSummaryMemory
 from langchain_core.prompts import PromptTemplate
 from langchain_cohere import ChatCohere, CohereEmbeddings
 from langchain_core.runnables import RunnablePassthrough
@@ -88,27 +89,53 @@ class ArxivModel:
 
         return vector_db
 
-    def create_qa_chain(self, vector_db, llm):
-        retriever = vector_db.as_retriever()
+    def create_conversational_memory(self, llm):
+        summary_prompt_template = """Summarize the conversation and update with new lines.
+        Current summary: {summary}
+        New lines: {new_lines}
+        Updated summary:
+        """
+        summary_prompt = PromptTemplate(
+            template=summary_prompt_template,
+            input_variables=["summary", "new_lines"]
+        )
 
-        prompt_template = """You are an AI assistant that answers questions strictly based on the provided research papers.
+        memory = ConversationSummaryMemory(llm=llm,
+                                           prompt=summary_prompt,
+                                           memory_key="chat_history")
+        return memory
+
+    def get_prompt_for_qa(self):
+
+        main_prompt_template = """You are an AI assistant called 'ArXiv Assist' that has a conversation with the user and answers to questions strictly based on the provided research papers or based on the conversational history passed to you.
         Below are relevant excerpts from the papers:
 
         {context}
+
+        Below is the conversation history:
+        {chat_history}
 
         Based on the above information, answer the following question:
         {question}
 
         Note:
         - There could be cases when its not a question but just a statement. In such cases, do not use knowledge from the papers. Just reply back with what you have learned before (e.g. 'You're welcome' if the input is 'Thanks').
-        - If you feel its a question and you do not find relevant information in the given papers, respond with 'Sorry, I do not have much information related to this. But this could be something close to what you are looking for...' and then respond back with the knowledge you have apart from the papers.
+        - If you feel its a question and you do not find relevant information in the given papers or the conversational memory, respond with 'Sorry, I do not have much information related to this. But this could be something close to what you are looking for...' and then respond back with the knowledge you have apart from the papers.
         - Be polite and friendly in your responses.
         """
-        prompt = PromptTemplate(template=prompt_template, input_variables=[
-                                "context", "question"])
+        main_prompt = PromptTemplate(
+            template=main_prompt_template, input_variables=["context", "question", "chat_history"])
+
+        return main_prompt
+
+    def create_qa_chain(self, vector_db, llm):
+        retriever = vector_db.as_retriever()
+        memory = self.create_conversational_memory(llm)
+        prompt = self.get_prompt_for_qa()
 
         qa_chain = (
-            {"context": retriever, "question": RunnablePassthrough()}
+            {"context": retriever, "chat_history": lambda x: memory.load_memory_variables(
+                x)["chat_history"], "question": RunnablePassthrough()}
             | prompt
             | llm
             | StrOutputParser()
