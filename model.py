@@ -1,17 +1,16 @@
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain.schema import Document
-from langchain.memory import ConversationSummaryMemory
-from langchain_core.prompts import PromptTemplate
+from langchain.chains.retrieval import create_retrieval_chain
 from langchain_cohere import ChatCohere, CohereEmbeddings
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.prompts import ChatPromptTemplate
+
 from dotenv import load_dotenv
 import feedparser
 import faiss
 import json
 import os
-import yaml
 import streamlit as st
 
 
@@ -23,10 +22,6 @@ class ArxivModel:
             self._set_api_keys()
         else:
             os.environ["COHERE_API_KEY"] = api_key
-
-        # Load prompts from YAMl
-        with open('./prompts/prompt_templates.yaml', 'r') as file:
-            self.prompts = yaml.safe_load(file)
 
     def _set_api_keys(self):
         # load all env vars from .env file
@@ -64,11 +59,12 @@ class ArxivModel:
                           temperature=0.5
                           )
 
-    def create_vector_db(self, docs):
+    def get_retriever(self, docs):
         # Load a pre-trained embedding model
         embedding_model = CohereEmbeddings(model="embed-english-light-v3.0")
 
-        index = faiss.IndexFlatL2(len(embedding_model.embed_query("Hello LLM")))
+        index = faiss.IndexFlatL2(
+            len(embedding_model.embed_query("Hello LLM")))
 
         vector_db = FAISS(
             embedding_function=embedding_model,
@@ -79,63 +75,36 @@ class ArxivModel:
 
         vector_db.add_documents(docs)
 
-        return vector_db
+        return vector_db.as_retriever()
 
-    def create_conversational_memory(self, llm):
-        # Get prompt template from YAML for the chat summarization
-        summary_prompt_template = self.prompts["chat_summary"]["v_1_0"]
+    def get_prompt(self):
+        system_prompt = ("You are an AI assistant called 'ArXiv Assist' that has a conversation with the user and answers to questions based on the provided research papers. "
+                         "There could be cases when user does not ask a question, but it is just a statement. In such cases, do not use knowledge from the papers. Just reply back normally and accordingly to have a good conversation (e.g. 'You're welcome' if the input is 'Thanks'). "
+                         "If no relevant information is found in the papers, respond with: 'Sorry, I do not have much information related to this. "
+                         "If you reference a paper, provide a hyperlink to it. "
+                         "Be polite, friendly, and format your response well (e.g., use bullet points, bold text, etc.). "
+                         "Below are relevant excerpts from the research papers:\n{context}\n\n"
+                         )
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "Answer the following question: {input}")
+        ])
 
-        # Create prompt
-        summary_prompt = PromptTemplate(
-            template=summary_prompt_template,
-            input_variables=["summary", "new_lines"]    # keep the input variable names the same!
-        )
+        return prompt
 
-        # Create object to hold chat memory
-        memory = ConversationSummaryMemory(llm=llm,
-                                           prompt=summary_prompt,
-                                           memory_key="chat_history",
-                                           return_messages=True,
-                                           verbose=True)
-        return memory
-
-    def get_prompt_for_qa(self):
-        # Get prompt template from YAML for the QA Chain
-        main_prompt_template = self.prompts["qa_chain"]["v_1_0"]
-
-        # Create prompt
-        main_prompt = PromptTemplate(
-            template=main_prompt_template,
-            input_variables=["context", "chat_history", "question"])
-
-        return main_prompt
-
-    def create_qa_chain(self, vector_db, llm):
-        retriever = vector_db.as_retriever()
-        memory = self.create_conversational_memory(llm)
-        prompt = self.get_prompt_for_qa()
-
-        input_dict = {
-            "context": retriever,
-            "chat_history": lambda x: memory.load_memory_variables(x)["chat_history"],
-            "question": RunnablePassthrough(verbose=True)
-        }
-
-        qa_chain = (
-            input_dict
-            | prompt
-            | llm
-            | StrOutputParser()
-            )
-
-        return qa_chain
+    def create_qa_chain(self, retriever, llm):
+        prompt = self.get_prompt()
+        qa_chain = create_stuff_documents_chain(llm=llm, prompt=prompt)
+        rag_chain = create_retrieval_chain(
+            retriever=retriever, combine_docs_chain=qa_chain)
+        return rag_chain
 
     def get_model(self, data):
         docs = self.create_documents(data)
-        vector_db = self.create_vector_db(docs)
+        retriever = self.get_retriever(docs)
         llm = self.get_llm()
-        qa_chain = self.create_qa_chain(vector_db, llm)
-        return qa_chain
+        rag_chain = self.create_qa_chain(retriever, llm)
+        return rag_chain
 
 
 if __name__ == "__main__":
@@ -157,9 +126,12 @@ if __name__ == "__main__":
         feed = feedparser.parse(url)
         data = feed.entries
 
-    qa_chain = arxiv_model.get_model(data)
+    llm_chain = arxiv_model.get_model(data)
 
-    for chunk in qa_chain.stream("What is LLM?"):
+    response = llm_chain.invoke({"input": "Hello!"})
+    print(response["answer"])
+
+    for chunk in llm_chain.stream("What is LLM?"):
         print(chunk, end="", flush=True)
 
     if USE_STREAMLIT:
@@ -170,6 +142,6 @@ if __name__ == "__main__":
         # Show the answer when the user submits a question
         if query:
             with st.spinner("Thinking..."):
-                response = qa_chain.invoke(query)
+                response = llm_chain.invoke(query)
                 st.write("Answer:")
                 st.write(response)
