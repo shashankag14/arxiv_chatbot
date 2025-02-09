@@ -11,41 +11,33 @@ import feedparser
 import faiss
 import json
 import os
+import yaml
 import streamlit as st
 
 
 class ArxivModel:
     def __init__(self, api_key=None):
 
+        # Use .env file to load keys if not passed explicitly
         if api_key is None:
             self._set_api_keys()
         else:
             os.environ["COHERE_API_KEY"] = api_key
 
+        # Load prompts from YAMl
+        with open('./prompts/prompt_templates.yaml', 'r') as file:
+            self.prompts = yaml.safe_load(file)
+
     def _set_api_keys(self):
-        # Load environment variables from the .env file
+        # load all env vars from .env file
         load_dotenv()
 
-        # Check if the API keys are present
-        if not os.getenv('HUGGINGFACE_API_KEY'):
-            raise ValueError(
-                "Error: HUGGINGFACE_API_KEY is not set. Please add it to your .env file.")
-        else:
-            os.environ["HUGGINGFACEHUB_API_TOKEN"] = os.getenv('HUGGINGFACE_API_KEY')
+        # Add all such vars in OS env vars
+        for key, value in os.environ.items():
+            if key in os.getenv(key):  # Check if it exists in the .env file
+                os.environ[key] = value
 
-        if not os.getenv('OPENAI_API_KEY'):
-            raise ValueError(
-                "Error: OPENAI_API_KEY is not set. Please add it to your .env file.")
-        else:
-            os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
-
-        if not os.getenv('COHERE_API_KEY'):
-            raise ValueError(
-                "Error: OPENAI_API_KEY is not set. Please add it to your .env file.")
-        else:
-            os.environ["COHERE_API_KEY"] = os.getenv('COHERE_API_KEY')
-
-        print("API keys loaded successfully!")
+        print("All environment variables loaded successfully!")
 
     def load_json(self, file_path):
         with open(file_path, "r") as f:
@@ -90,41 +82,31 @@ class ArxivModel:
         return vector_db
 
     def create_conversational_memory(self, llm):
-        summary_prompt_template = """Summarize the conversation and update with new lines.
-        Current summary: {summary}
-        New lines: {new_lines}
-        Updated summary:
-        """
+        # Get prompt template from YAML for the chat summarization
+        summary_prompt_template = self.prompts["chat_summary"]["v_1_0"]
+
+        # Create prompt
         summary_prompt = PromptTemplate(
             template=summary_prompt_template,
-            input_variables=["summary", "new_lines"]
+            input_variables=["summary", "new_lines"]    # keep the input variable names the same!
         )
 
+        # Create object to hold chat memory
         memory = ConversationSummaryMemory(llm=llm,
                                            prompt=summary_prompt,
-                                           memory_key="chat_history")
+                                           memory_key="chat_history",
+                                           return_messages=True,
+                                           verbose=True)
         return memory
 
     def get_prompt_for_qa(self):
+        # Get prompt template from YAML for the QA Chain
+        main_prompt_template = self.prompts["qa_chain"]["v_1_0"]
 
-        main_prompt_template = """You are an AI assistant called 'ArXiv Assist' that has a conversation with the user and answers to questions strictly based on the provided research papers or based on the conversational history passed to you.
-        Below are relevant excerpts from the papers:
-
-        {context}
-
-        Below is the conversation history:
-        {chat_history}
-
-        Based on the above information, answer the following question:
-        {question}
-
-        Note:
-        - There could be cases when its not a question but just a statement. In such cases, do not use knowledge from the papers. Just reply back with what you have learned before (e.g. 'You're welcome' if the input is 'Thanks').
-        - If you feel its a question and you do not find relevant information in the given papers or the conversational memory, respond with 'Sorry, I do not have much information related to this. But this could be something close to what you are looking for...' and then respond back with the knowledge you have apart from the papers.
-        - Be polite and friendly in your responses.
-        """
+        # Create prompt
         main_prompt = PromptTemplate(
-            template=main_prompt_template, input_variables=["context", "question", "chat_history"])
+            template=main_prompt_template,
+            input_variables=["context", "chat_history", "question"])
 
         return main_prompt
 
@@ -133,9 +115,14 @@ class ArxivModel:
         memory = self.create_conversational_memory(llm)
         prompt = self.get_prompt_for_qa()
 
+        input_dict = {
+            "context": retriever,
+            "chat_history": lambda x: memory.load_memory_variables(x)["chat_history"],
+            "question": RunnablePassthrough(verbose=True)
+        }
+
         qa_chain = (
-            {"context": retriever, "chat_history": lambda x: memory.load_memory_variables(
-                x)["chat_history"], "question": RunnablePassthrough()}
+            input_dict
             | prompt
             | llm
             | StrOutputParser()
