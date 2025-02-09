@@ -2,6 +2,9 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain.schema import Document
 from langchain.chains.retrieval import create_retrieval_chain
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.chains.history_aware_retriever import create_history_aware_retriever
 from langchain_cohere import ChatCohere, CohereEmbeddings
 from langchain_core.prompts import MessagesPlaceholder
@@ -24,6 +27,10 @@ class ArxivModel:
             self._set_api_keys()
         else:
             os.environ["COHERE_API_KEY"] = api_key
+
+        self.store = {}
+        # TODO: make this dynamic for new sessions via the app
+        self.session_config = {"configurable": {"session_id": "0"}}
 
     def _set_api_keys(self):
         # load all env vars from .env file
@@ -54,6 +61,11 @@ class ArxivModel:
                                  metadata={"link": link}))
 
         return docs
+
+    def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
+        if session_id not in self.store:
+            self.store[session_id] = ChatMessageHistory()
+        return self.store[session_id]
 
     def create_retriever(self, docs):
         # Load a pre-trained embedding model
@@ -109,29 +121,38 @@ class ArxivModel:
 
         return prompt
 
-    def create_qa_chain(self):
-        # Generate main prompt for the final chain
-        prompt = self.get_prompt()
-
-        # Subchain 1: Create ``history aware´´ retriever chain that uses conversation history tp update docs
+    def create_conversational_rag_chain(self):
+        # Subchain 1: Create ``history aware´´ retriever chain that uses conversation history to update docs
         history_aware_retriever_chain = self.create_history_aware_retreiver()
 
         # Subchain 2: Create chain to send docs to LLM
+        # Generate main prompt that takes history aware retriever
+        prompt = self.get_prompt()
+        # Create the chain
         qa_chain = create_stuff_documents_chain(llm=self.llm, prompt=prompt)
 
-        # Main chain: Create a chain that connects the two subchains
+        # RAG chain: Create a chain that connects the two subchains
         rag_chain = create_retrieval_chain(
             retriever=history_aware_retriever_chain,
             combine_docs_chain=qa_chain)
-        return rag_chain
+
+        # Conversational RAG Chain: A wrapper chain to store chat history
+        conversational_rag_chain = RunnableWithMessageHistory(
+            rag_chain,
+            self.get_session_history,
+            input_messages_key="input",
+            history_messages_key="chat_history",
+            output_messages_key="answer",
+        )
+        return conversational_rag_chain
 
     def get_model(self, data):
         docs = self.create_documents(data)
         self.create_retriever(docs)
         self.llm = ChatCohere(
             model="command-r-plus-08-2024", max_tokens=256, temperature=0.5)
-        rag_chain = self.create_qa_chain()
-        return rag_chain
+        conversational_rag_chain = self.create_conversational_rag_chain()
+        return conversational_rag_chain, self.session_config
 
 
 if __name__ == "__main__":
