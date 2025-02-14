@@ -85,13 +85,13 @@ class ArxivModel:
 
         self.retriever = vector_db.as_retriever()
 
-    def create_history_aware_retreiver(self):
+    def get_history_aware_retreiver(self):
         system_prompt_to_reformulate_input = (
             "Given a chat history and the latest user question "
             "which might reference the context in the chat history "
             "formulate a standalone question which can be understood "
             "without chat history. Do NOT answer the question, "
-            "just reformulate it is needed and otherwise return it as is."
+            "just reformulate it if needed and otherwise return it as is."
         )
 
         prompt_to_reformulate_input = ChatPromptTemplate.from_messages([
@@ -106,10 +106,10 @@ class ArxivModel:
         return history_aware_retriever_chain
 
     def get_prompt(self):
-        system_prompt = ("You are an AI assistant called 'ArXiv Assist' that has a conversation with the user and answers to questions based on the provided research papers. "
-                         "There could be cases when user does not ask a question, but it is just a statement. In such cases, do not use knowledge from the papers. Just reply back normally and accordingly to have a good conversation (e.g. 'You're welcome' if the input is 'Thanks'). "
-                         "If no relevant information is found in the papers, respond with: 'Sorry, I do not have much information related to this. "
-                         "If you reference a paper, provide a hyperlink to it. "
+        system_prompt = ("You are an AI assistant called 'ArXiv Assist' that has a conversation with the user and answers to questions. "
+                         "Try looking into the research papers content provided to you to respond back. If you could not find any relevant information there, mention something like 'I do not have enough information form the research papers. However, this is what I know...' and then try to formulate a response by your own. "
+                         "There could be cases when user does not ask a question, but it is just a statement. Just reply back normally and accordingly to have a good conversation (e.g. 'You're welcome' if the input is 'Thanks'). "
+                         "If you mention the name of a paper, provide an arxiv link to it. "
                          "Be polite, friendly, and format your response well (e.g., use bullet points, bold text, etc.). "
                          "Below are relevant excerpts from the research papers:\n{context}\n\n"
                          )
@@ -123,7 +123,7 @@ class ArxivModel:
 
     def create_conversational_rag_chain(self):
         # Subchain 1: Create ``history aware´´ retriever chain that uses conversation history to update docs
-        history_aware_retriever_chain = self.create_history_aware_retreiver()
+        history_aware_retriever_chain = self.get_history_aware_retreiver()
 
         # Subchain 2: Create chain to send docs to LLM
         # Generate main prompt that takes history aware retriever
