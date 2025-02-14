@@ -4,7 +4,7 @@ from model import ArxivModel
 from urllib.parse import quote
 
 
-class ArxivChatbot:
+class ArxivApp:
     def __init__(self):
         self.initialize_states()
         self.render_ui()
@@ -12,12 +12,14 @@ class ArxivChatbot:
     def initialize_states(self):
         if "messages" not in st.session_state:
             st.session_state.messages = []
-        if "qa_chain" not in st.session_state:
-            st.session_state.qa_chain = None
+        if "llm_chain" not in st.session_state:
+            st.session_state.llm_chain = None
         if "keywords" not in st.session_state:
             st.session_state.keywords = []
         if "cohere_api_key" not in st.session_state:
             st.session_state.cohere_api_key = None
+        if "session_config" not in st.session_state:
+            st.session_state.session_config = None
 
     def add_keyword(self):
         new_keyword = st.session_state.new_keyword.strip()
@@ -62,7 +64,8 @@ class ArxivChatbot:
     def prepare_llm(self, keywords, feed):
         arxiv_instance = ArxivModel(st.session_state.cohere_api_key)
         if feed.entries:
-            st.session_state.qa_chain = arxiv_instance.get_model(feed.entries)
+            st.session_state.llm_chain, st.session_state.session_config = arxiv_instance.get_model(
+                feed.entries)
             st.sidebar.write(f"Fetched {len(feed.entries)} papers for:")
             for kw in keywords:
                 st.sidebar.write(f"- {kw}")
@@ -76,7 +79,10 @@ class ArxivChatbot:
             st.markdown(prompt)
 
         with st.spinner("Thinking..."):
-            response = st.session_state.qa_chain.invoke(prompt)
+            response = st.session_state.llm_chain.invoke(
+                {"input": prompt},
+                config=st.session_state.session_config
+                )["answer"]
 
         st.session_state.messages.append(
             {"role": "assistant", "content": response})
@@ -110,7 +116,7 @@ class ArxivChatbot:
             with col2:
                 if st.button("Reset", type="secondary"):
                     st.session_state.keywords = []
-                    st.session_state.qa_chain = None
+                    st.session_state.llm_chain = None
                     st.rerun()
 
         for message in st.session_state.messages:
@@ -118,7 +124,7 @@ class ArxivChatbot:
                 st.markdown(message["content"])
 
         if prompt := st.chat_input("Ask a question about the papers..."):
-            if not st.session_state.qa_chain:
+            if not st.session_state.llm_chain:
                 st.warning(
                     "Please provide keywords related to a topic you want to discuss about.")
             else:
@@ -126,4 +132,4 @@ class ArxivChatbot:
 
 
 if __name__ == "__main__":
-    ArxivChatbot()
+    ArxivApp()

@@ -1,10 +1,16 @@
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain.schema import Document
-from langchain_core.prompts import PromptTemplate
+from langchain.chains.retrieval import create_retrieval_chain
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain.chains.history_aware_retriever import create_history_aware_retriever
 from langchain_cohere import ChatCohere, CohereEmbeddings
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import MessagesPlaceholder
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.prompts import ChatPromptTemplate
+
 from dotenv import load_dotenv
 import feedparser
 import faiss
@@ -16,35 +22,26 @@ import streamlit as st
 class ArxivModel:
     def __init__(self, api_key=None):
 
+        # Use .env file to load keys if not passed explicitly
         if api_key is None:
             self._set_api_keys()
         else:
             os.environ["COHERE_API_KEY"] = api_key
 
+        self.store = {}
+        # TODO: make this dynamic for new sessions via the app
+        self.session_config = {"configurable": {"session_id": "0"}}
+
     def _set_api_keys(self):
-        # Load environment variables from the .env file
+        # load all env vars from .env file
         load_dotenv()
 
-        # Check if the API keys are present
-        if not os.getenv('HUGGINGFACE_API_KEY'):
-            raise ValueError(
-                "Error: HUGGINGFACE_API_KEY is not set. Please add it to your .env file.")
-        else:
-            os.environ["HUGGINGFACEHUB_API_TOKEN"] = os.getenv('HUGGINGFACE_API_KEY')
+        # Add all such vars in OS env vars
+        for key, value in os.environ.items():
+            if key in os.getenv(key):  # Check if it exists in the .env file
+                os.environ[key] = value
 
-        if not os.getenv('OPENAI_API_KEY'):
-            raise ValueError(
-                "Error: OPENAI_API_KEY is not set. Please add it to your .env file.")
-        else:
-            os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
-
-        if not os.getenv('COHERE_API_KEY'):
-            raise ValueError(
-                "Error: OPENAI_API_KEY is not set. Please add it to your .env file.")
-        else:
-            os.environ["COHERE_API_KEY"] = os.getenv('COHERE_API_KEY')
-
-        print("API keys loaded successfully!")
+        print("All environment variables loaded successfully!")
 
     def load_json(self, file_path):
         with open(file_path, "r") as f:
@@ -65,17 +62,17 @@ class ArxivModel:
 
         return docs
 
-    def get_llm(self):
-        return ChatCohere(model="command-r-plus-08-2024",
-                          max_tokens=256,
-                          temperature=0.5
-                          )
+    def get_session_history(self, session_id: str) -> BaseChatMessageHistory:
+        if session_id not in self.store:
+            self.store[session_id] = ChatMessageHistory()
+        return self.store[session_id]
 
-    def create_vector_db(self, docs):
+    def create_retriever(self, docs):
         # Load a pre-trained embedding model
         embedding_model = CohereEmbeddings(model="embed-english-light-v3.0")
 
-        index = faiss.IndexFlatL2(len(embedding_model.embed_query("Hello LLM")))
+        index = faiss.IndexFlatL2(
+            len(embedding_model.embed_query("Hello LLM")))
 
         vector_db = FAISS(
             embedding_function=embedding_model,
@@ -86,42 +83,76 @@ class ArxivModel:
 
         vector_db.add_documents(docs)
 
-        return vector_db
+        self.retriever = vector_db.as_retriever()
 
-    def create_qa_chain(self, vector_db, llm):
-        retriever = vector_db.as_retriever()
+    def get_history_aware_retreiver(self):
+        system_prompt_to_reformulate_input = (
+            "Given a chat history and the latest user question "
+            "which might reference the context in the chat history "
+            "formulate a standalone question which can be understood "
+            "without chat history. Do NOT answer the question, "
+            "just reformulate it if needed and otherwise return it as is."
+        )
 
-        prompt_template = """You are an AI assistant that answers questions strictly based on the provided research papers.
-        Below are relevant excerpts from the papers:
+        prompt_to_reformulate_input = ChatPromptTemplate.from_messages([
+            ("system", system_prompt_to_reformulate_input),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}")
+        ])
 
-        {context}
+        history_aware_retriever_chain = create_history_aware_retriever(
+            self.llm, self.retriever, prompt_to_reformulate_input
+        )
+        return history_aware_retriever_chain
 
-        Based on the above information, answer the following question:
-        {question}
+    def get_prompt(self):
+        system_prompt = ("You are an AI assistant called 'ArXiv Assist' that has a conversation with the user and answers to questions. "
+                         "Try looking into the research papers content provided to you to respond back. If you could not find any relevant information there, mention something like 'I do not have enough information form the research papers. However, this is what I know...' and then try to formulate a response by your own. "
+                         "There could be cases when user does not ask a question, but it is just a statement. Just reply back normally and accordingly to have a good conversation (e.g. 'You're welcome' if the input is 'Thanks'). "
+                         "If you mention the name of a paper, provide an arxiv link to it. "
+                         "Be polite, friendly, and format your response well (e.g., use bullet points, bold text, etc.). "
+                         "Below are relevant excerpts from the research papers:\n{context}\n\n"
+                         )
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "Answer the following question: {input}")
+        ])
 
-        Note:
-        - There could be cases when its not a question but just a statement. In such cases, do not use knowledge from the papers. Just reply back with what you have learned before (e.g. 'You're welcome' if the input is 'Thanks').
-        - If you feel its a question and you do not find relevant information in the given papers, respond with 'Sorry, I do not have much information related to this. But this could be something close to what you are looking for...' and then respond back with the knowledge you have apart from the papers.
-        - Be polite and friendly in your responses.
-        """
-        prompt = PromptTemplate(template=prompt_template, input_variables=[
-                                "context", "question"])
+        return prompt
 
-        qa_chain = (
-            {"context": retriever, "question": RunnablePassthrough()}
-            | prompt
-            | llm
-            | StrOutputParser()
-            )
+    def create_conversational_rag_chain(self):
+        # Subchain 1: Create ``history aware´´ retriever chain that uses conversation history to update docs
+        history_aware_retriever_chain = self.get_history_aware_retreiver()
 
-        return qa_chain
+        # Subchain 2: Create chain to send docs to LLM
+        # Generate main prompt that takes history aware retriever
+        prompt = self.get_prompt()
+        # Create the chain
+        qa_chain = create_stuff_documents_chain(llm=self.llm, prompt=prompt)
+
+        # RAG chain: Create a chain that connects the two subchains
+        rag_chain = create_retrieval_chain(
+            retriever=history_aware_retriever_chain,
+            combine_docs_chain=qa_chain)
+
+        # Conversational RAG Chain: A wrapper chain to store chat history
+        conversational_rag_chain = RunnableWithMessageHistory(
+            rag_chain,
+            self.get_session_history,
+            input_messages_key="input",
+            history_messages_key="chat_history",
+            output_messages_key="answer",
+        )
+        return conversational_rag_chain
 
     def get_model(self, data):
         docs = self.create_documents(data)
-        vector_db = self.create_vector_db(docs)
-        llm = self.get_llm()
-        qa_chain = self.create_qa_chain(vector_db, llm)
-        return qa_chain
+        self.create_retriever(docs)
+        self.llm = ChatCohere(
+            model="command-r-plus-08-2024", max_tokens=256, temperature=0.5)
+        conversational_rag_chain = self.create_conversational_rag_chain()
+        return conversational_rag_chain, self.session_config
 
 
 if __name__ == "__main__":
@@ -143,9 +174,12 @@ if __name__ == "__main__":
         feed = feedparser.parse(url)
         data = feed.entries
 
-    qa_chain = arxiv_model.get_model(data)
+    llm_chain = arxiv_model.get_model(data)
 
-    for chunk in qa_chain.stream("What is LLM?"):
+    response = llm_chain.invoke({"input": "Hello!"})
+    print(response["answer"])
+
+    for chunk in llm_chain.stream("What is LLM?"):
         print(chunk, end="", flush=True)
 
     if USE_STREAMLIT:
@@ -156,6 +190,6 @@ if __name__ == "__main__":
         # Show the answer when the user submits a question
         if query:
             with st.spinner("Thinking..."):
-                response = qa_chain.invoke(query)
+                response = llm_chain.invoke(query)
                 st.write("Answer:")
                 st.write(response)
