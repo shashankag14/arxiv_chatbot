@@ -80,7 +80,7 @@ class ArxivApp:
 
         with st.spinner("Thinking..."):
             response = st.session_state.llm_chain.invoke(
-                {"input": "prompt"},
+                {"input": prompt},
                 config=st.session_state.session_config
                 )["answer"]
 
