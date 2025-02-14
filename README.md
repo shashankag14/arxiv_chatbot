@@ -1,13 +1,14 @@
 
 # ArXiv Chatbot
 
+#### **Try it out:** [![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://arxiv-qna.streamlit.app/)
+
 ArXiv Chatbot is a simple web application, designed to interact with research papers using the [ArXiv API](https://info.arxiv.org/help/api/index.html). The app allows users to enter multiple keyword, fetch related research papers, and ask questions about them. The aim of the app is to use concepts from Retrieval Augmented Generation (RAG) to answer questions about the papers using PyTorch and Streamlit. Following are the main features supported by the app:
 
 - **Search Papers**: Users can input multiple keywords and get a list of research papers from ArXiv.
 - **Ask Questions**: Users can ask questions related to the multiple research papers retrieved, and the app will provide answers using a trained model.
 - **Interactive UI**: A simple user interface built with Streamlit.
-
-Try it out: [![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://arxiv-qna.streamlit.app/)
+- **Memory Management:** The chatbot now incorporates a memory mechanism, allowing it to retain context from previous interactions within a single session. This improves the accuracy of responses over multiple questions.
 
 > **⚠️ Note:** The app uses Cohere for LLM based responses. Without a valid Cohere API key, the bot will not work. You can get your API key from [Cohere's API Key Page](https://dashboard.cohere.com/api-keys).
 
@@ -38,7 +39,7 @@ In order to test the app locally without using the streamlit app, make sure to s
 To run the app locally, execute the following command from the root directory of the project:
 
 ```bash
-streamlit run ./arxiv_chatbot_app.py
+streamlit run ./app.py
 ```
 
 This will launch the Streamlit web interface in your browser.
@@ -55,6 +56,5 @@ This will launch the Streamlit web interface in your browser.
 - **FAISS**: For similarity search and retrieval.
 - **Streamlit**: For building the web-based UI.
 - **ArXiv API**: For fetching research papers from the ArXiv database.
-- **Feedparser**: For parsing the XML feed from the ArXiv API.
 
 Feel free to fork the repository and submit pull requests. If you encounter any issues, please open an issue in the repository.
